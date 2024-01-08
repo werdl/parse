@@ -1,4 +1,9 @@
-use std::collections::HashMap;
+#![no_std]
+
+extern crate alloc;
+
+use hashbrown::HashMap;
+use alloc::{string::String, vec::Vec, string::ToString};
 
 #[derive(Debug, Clone, Default)]
 pub struct Command {
