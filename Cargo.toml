@@ -3,6 +3,8 @@ name = "parsg"
 version = "0.1.0"
 edition = "2021"
 categories = ["no-std", "config", "command-line-interface"]
+description = "Command line parser"
+license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
