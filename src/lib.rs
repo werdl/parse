@@ -3,14 +3,14 @@
 extern crate alloc;
 
 use hashbrown::HashMap;
-use alloc::{string::String, vec::Vec, string::ToString};
+use alloc::{string::String, vec::Vec, string::ToString, format};
 
 #[derive(Debug, Clone, Default)]
-pub struct Command<'a> {
-    long: &'a str,
-    short: &'a str,
+pub struct Command {
+    long: String,
+    short: String,
     takes_input: bool,
-    doc: &'a str,
+    doc: String,
 }
 
 
@@ -40,18 +40,59 @@ pub struct Command<'a> {
 ///     }
 /// }
 /// ```
-pub struct Parser<'a> {
-    input: &'a str,
-    commands: Vec<Command<'a>>,
-    doc_field: &'a str,
-    name: &'a str,
-    examples: &'a str,
+pub struct Parser {
+    input: String,
+    commands: Vec<Command>,
+    doc_field: String,
+    name: String,
+    examples: String,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(name: &'a str, doc_field: &'a str, examples: &'a str) -> Self {
+#[derive(Debug, Clone)]
+pub struct ParserResult {
+    pub map: Option<HashMap<String, String>>,
+    pub help: Option<String>,
+    pub error: Option<String>,
+}
+
+impl ParserResult {
+    pub fn map(&self) -> Option<HashMap<String, String>> {
+        self.map.clone()
+    }
+    pub fn help(&self) -> Option<String> {
+        self.help.clone()
+    }
+    pub fn error(&self) -> Option<String> {
+        self.error.clone()
+    }
+
+    pub fn from_map(map: HashMap<String, String>) -> Self {
         Self {
-            input: "",
+            map: Some(map),
+            help: None,
+            error: None,
+        }
+    }
+    pub fn from_help(help: String) -> Self {
+        Self {
+            map: None,
+            help: Some(help),
+            error: None,
+        }
+    }
+    pub fn from_error(error: String) -> Self {
+        Self {
+            map: None,
+            help: None,
+            error: Some(error),
+        }
+    }
+}
+
+impl Parser {
+    pub fn new(name: String, doc_field: String, examples: String) -> Self {
+        Self {
+            input: String::new(),
             commands: Vec::new(),
             doc_field,
             name,
@@ -59,7 +100,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn add_command(&mut self, name: &'a str, takes_input: bool, short: &'a str, doc: &'a str) {
+    pub fn add_command(&mut self, name: String, takes_input: bool, short: String, doc: String) {
         self.commands.push(Command {
             long: name,
             short,
@@ -77,24 +118,76 @@ impl<'a> Parser<'a> {
         None
     }
 
-    pub fn parse(&mut self, input: &'a str) -> Result<HashMap<&'static str, &'static str>, &'a str> {
+    pub fn parse(&mut self, input: String) -> ParserResult {
         self.input = input;
 
-        let mut args: Vec<&str> = Vec::new();
+        let mut args: Vec<String> = Vec::new();
 
         let mut in_quotes = false;
-        let mut cur = "";
+        let mut cur = String::new();
         for c in self.input.chars() {
-            if c == '"' {
+            if ['\'', '"'].contains(&c) {
                 in_quotes = !in_quotes;
             } else if c == ' ' && !in_quotes {
                 if !cur.is_empty() {
                     args.push(cur.clone());
-                    cur = "String::new()";
+                    cur = String::new();
                 }
             } else {
-                cur = format_args!("{}{}", cur, c).as_str().unwrap();
+                cur.push(c);
             }
+        }
+        args.push(cur.clone());
+
+        let mut out = String::new();
+
+
+        if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+            match args.len() {
+                1 => { // global --help
+                    out.push_str(format!("Usage: {} [OPTIONS] ...\n\n{}\n", self.name, self.doc_field).as_str());
+
+                    for command in self.commands.clone() {
+                        out.push_str(format!("\n  -{} --{}: {} ({})\n", command.short, command.long, command.doc, if command.takes_input { "takes input" } else { "flag" }).as_str());
+                    }
+                    out.push_str("Examples:\n");
+                    for line in self.examples.lines() {
+                        out.push_str(format!("    {}\n", line).as_str());
+                    }
+                    out.push_str("\n");
+        
+                    return ParserResult::from_help(out);
+                },
+
+                2 => { // --help [flag or option]
+                    let arg = &args[1];
+                    let cmd = self.search(arg);
+                    match cmd {
+                        Some(command) => {
+                            out.push_str(format!(
+                                "-{} --{}: {} ({})\n",
+                                command.short,
+                                command.long,
+                                command.doc,
+                                if command.takes_input {
+                                    "takes input"
+                                } else {
+                                    "flag"
+                                }
+                            ).as_str());
+                            return ParserResult::from_help(out);
+                        },
+                        None => {
+                            return ParserResult::from_error(format!("Invalid flag/option: {}", arg))
+                        }
+                    }
+                }
+
+                _ => {
+                    return ParserResult::from_error("Invalid usage of help flag up top".to_string());
+                }
+            }
+
         }
 
         if !cur.is_empty() {
@@ -102,14 +195,14 @@ impl<'a> Parser<'a> {
         }
 
 
-        let mut result: HashMap<&str, &'a str> = HashMap::new();
+        let mut result: HashMap<String, String> = HashMap::new();
         let mut i = 0;
 
         while i < args.len() {
-            let arg = args[i];
+            let arg = &args[i];
 
-            if ["-h", "--help"].contains(&arg) {
-                result.insert("help", "present");
+            if ["-h", "--help"].contains(&arg.as_str()) {
+                result.insert("help".to_string(), "present".to_string());
             } else if arg.starts_with("--") {
                 let (key, value) = Self::parse_long_arg(arg);
 
@@ -119,29 +212,29 @@ impl<'a> Parser<'a> {
                         Some(command) => {
                             if command.takes_input {
                                 if i + 1 >= args.len() {
-                                    return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                                    return ParserResult::from_error(format!("Invalid argument: {}", arg))
                                 } else {
                                     let next_arg = &args[i + 1];
                                     if next_arg.starts_with("--") || next_arg.starts_with("-") {
-                                        return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                                        return ParserResult::from_error(format!("Invalid argument: {}", arg))
                                     }
-                                    result.insert(key.clone(), next_arg.clone());
+                                    result.insert(key.to_string(), next_arg.clone());
                                     i += 1;
                                 }
                             } else {
-                                result.insert(key.clone(), "present");
+                                result.insert(key.to_string(), "present".to_string());
                             }
                         },
-                        None => return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                        None => return ParserResult::from_error(format!("Invalid argument: {}", arg))
                     }
                 } else {
                     if !self.check(&key) {
-                        return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                        return ParserResult::from_error(format!("Invalid argument: {}", arg))
                     }
-                    result.insert(key, value);
+                    result.insert(key.to_string(), value.to_string());
                 }
             } else if arg.starts_with("-") {
-                let (key, value) = self.parse_short_arg(arg);
+                let (key, value) = self.parse_short_arg(arg.clone());
 
                 if value.is_empty() {
                     let cmd = self.search(&key);
@@ -149,55 +242,43 @@ impl<'a> Parser<'a> {
                         Some(command) => {
                             if command.takes_input {
                                 if i + 1 >= args.len() {
-                                    return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                                    return ParserResult::from_error(format!("Invalid argument: {}", arg))
                                 } else {
                                     let next_arg = &args[i + 1];
                                     if next_arg.starts_with("--") || next_arg.starts_with("-") {
-                                        return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                                        return ParserResult::from_error(format!("Invalid argument: {}", arg))
                                     }
-                                    result.insert(key.clone(), next_arg.clone());
+                                    result.insert(key.to_string(), next_arg.clone());
                                     i += 1;
                                 }
                             } else {
-                                result.insert(key.clone(), "present");
+                                result.insert(key.to_string(), "present".to_string());
                             }
                         },
-                        None => return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                        None => return ParserResult::from_error(format!("Invalid argument: {}", arg))
                     }
                 } else {
                     if !self.check(&key) {
-                        return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                        return ParserResult::from_error(format!("Invalid argument: {}", arg))
                     }
-                    result.insert(key, value);
+                    result.insert(key.to_string(), value.to_string());
                 }
             } else {
                 let flag = Self::parse_flag(arg);
                 if !self.check(&flag) {
-                    return Err(format_args!("Invalid argument: {}", arg).as_str().unwrap())
+                    return ParserResult::from_error(format!("Invalid argument: {}", arg))
                 }
-                result.insert(flag, "present");
+                result.insert(flag.to_string(), "present".to_string());
             }
 
             i += 1;
         }
 
-        let mut out = "";
-
         if result.contains_key("help") {
-            // Replace println! with your custom output function
-            out = format_args!("Usage: {} [OPTIONS] ...\n\n{}\n", self.name, self.doc_field).as_str().unwrap();
-
-            for command in self.commands.clone() {
-                out = format_args!("{}\n  -{} --{}: {} ({})\n", out, command.short, command.long, command.doc, if command.takes_input { "takes input" } else { "flag" }).as_str().unwrap();
-            }
-            out = format_args!("{} Examples:\n", out).as_str().unwrap();
-            for line in self.examples.lines() {
-                out = format_args!("{}    {}\n",out, line).as_str().unwrap();
-            }
-            out = format_args!("{}\n", out).as_str().unwrap();
+            return ParserResult::from_error("Invalid usage of help flag".to_string());
         }
 
-        Ok(result)
+        ParserResult::from_map(result)
     }
 
     fn parse_flag(arg: &str) -> &str {
@@ -229,12 +310,12 @@ impl<'a> Parser<'a> {
         (key, value)
     }
 
-    fn parse_short_arg(&self, arg: &str) -> (&str, &str) {
-        let key = self.search(arg.get(1..=1).unwrap()).unwrap_or_default().long;
+    fn parse_short_arg(&self, arg: String) -> (String, String) {
+        let key = self.search(&arg[1..=1]).unwrap_or_default().long;
         let value = if arg.len() > 3 {
-            &arg[3..]
+            arg[3..].to_string()
         } else {
-            ""
+            "".to_string()
         };
         (key, value)
     }
@@ -244,13 +325,14 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate std;
 
     #[test]
     fn test_parse() {
-        let mut tester = Parser::new("test", "A test program", "test -n=\"John Doe\" --age=20");
-        tester.add_command("name", true, "n", "The name of the person");
-        tester.add_command("age", true, "a", "The age of the person");
-        let hash = tester.parse("-n=\"John Doe\" --age=20 -h");
-        println!("{:?}", hash);
+        let mut tester = Parser::new("test".to_string(), "A test program".to_string(), "test -n=\"John Doe\" --age=20".to_string());
+        tester.add_command("name".to_string(), true, "n".to_string(), "The name of the person".to_string());
+        tester.add_command("age".to_string(), true, "a".to_string(), "The age of the person".to_string());
+        let hash = tester.parse("--help name".to_string());
+        std::println!("{:?}", hash);
     }
 }
