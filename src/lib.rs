@@ -48,6 +48,9 @@ pub struct Parser {
     examples: String,
 }
 
+/// A result from parsing command-line arguments.
+/// 
+/// The `ParserResult` struct provides methods for extracting the parsed arguments.
 #[derive(Debug, Clone)]
 pub struct ParserResult {
     pub map: Option<HashMap<String, String>>,
@@ -66,21 +69,21 @@ impl ParserResult {
         self.error.clone()
     }
 
-    pub fn from_map(map: HashMap<String, String>) -> Self {
+    fn from_map(map: HashMap<String, String>) -> Self {
         Self {
             map: Some(map),
             help: None,
             error: None,
         }
     }
-    pub fn from_help(help: String) -> Self {
+    fn from_help(help: String) -> Self {
         Self {
             map: None,
             help: Some(help),
             error: None,
         }
     }
-    pub fn from_error(error: String) -> Self {
+    fn from_error(error: String) -> Self {
         Self {
             map: None,
             help: None,
@@ -117,6 +120,9 @@ impl Parser {
         }
         None
     }
+    pub fn parse_vec<T: ToString>(&mut self, input: Vec<T>) -> ParserResult {
+        self.parse(input.into_iter().map(|x| x.to_string()).collect::<Vec<String>>().join(" "))
+    }
 
     pub fn parse(&mut self, input: String) -> ParserResult {
         self.input = input;
@@ -138,6 +144,7 @@ impl Parser {
             }
         }
         args.push(cur.clone());
+
 
         let mut out = String::new();
 
@@ -332,7 +339,7 @@ mod tests {
         let mut tester = Parser::new("test".to_string(), "A test program".to_string(), "test -n=\"John Doe\" --age=20".to_string());
         tester.add_command("name".to_string(), true, "n".to_string(), "The name of the person".to_string());
         tester.add_command("age".to_string(), true, "a".to_string(), "The age of the person".to_string());
-        let hash = tester.parse("--help name".to_string());
+        let hash = tester.parse_vec(std::vec!["--help", "name"]);
         std::println!("{:?}", hash);
     }
 }
