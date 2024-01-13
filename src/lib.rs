@@ -21,25 +21,11 @@ pub struct Command {
 ///
 /// # Examples
 ///
-/// ```
-/// use std::collections::HashMap;
-///
-/// let mut parser = Parser::new();
-/// parser.add_command("name".to_string(), true, 'n');
-/// parser.add_command("verbose".to_string(), false, 'v');
-///
-/// let input = "--name=John --verbose";
-/// let result = parser.parse(input.to_string());
-///
-/// match result {
-///     Ok(args) => {
-///         println!("Parsed arguments: {:?}", args);
-///     },
-///     Err(error) => {
-///         println!("Error: {}", error);
-///     }
-/// }
-/// ```
+/// let mut tester = Parser::new("test".to_string(), "A test program".to_string(), "test -n=\"John Doe\" --age=20".to_string());
+/// tester.add_command("name".to_string(), true, "n".to_string(), "The name of the person".to_string());
+/// tester.add_command("age".to_string(), true, "a".to_string(), "The age of the person".to_string());
+/// let hash = tester.parse_vec(std::vec!["--help", "name"]);
+/// println!("{:?}", hash);
 pub struct Parser {
     input: String,
     commands: Vec<Command>,
@@ -53,18 +39,21 @@ pub struct Parser {
 /// The `ParserResult` struct provides methods for extracting the parsed arguments.
 #[derive(Debug, Clone)]
 pub struct ParserResult {
-    pub map: Option<HashMap<String, String>>,
-    pub help: Option<String>,
-    pub error: Option<String>,
+    map: Option<HashMap<String, String>>,
+    help: Option<String>,
+    error: Option<String>,
 }
 
 impl ParserResult {
+    /// Returns the value of the hashmap in an Option.
     pub fn map(&self) -> Option<HashMap<String, String>> {
         self.map.clone()
     }
+    /// Returns the value of the help field in an Option.
     pub fn help(&self) -> Option<String> {
         self.help.clone()
     }
+    /// Returns the value of the error field in an Option.
     pub fn error(&self) -> Option<String> {
         self.error.clone()
     }
@@ -93,6 +82,7 @@ impl ParserResult {
 }
 
 impl Parser {
+    /// Creates a new `Parser` with the given name, doc field, and examples.
     pub fn new(name: String, doc_field: String, examples: String) -> Self {
         Self {
             input: String::new(),
@@ -103,6 +93,7 @@ impl Parser {
         }
     }
 
+    /// Adds a command to the `Parser`.
     pub fn add_command(&mut self, name: String, takes_input: bool, short: String, doc: String) {
         self.commands.push(Command {
             long: name,
@@ -120,10 +111,12 @@ impl Parser {
         }
         None
     }
+    /// Parses a `Vec` of `String`s into a `ParserResult
     pub fn parse_vec<T: ToString>(&mut self, input: Vec<T>) -> ParserResult {
         self.parse(input.into_iter().map(|x| x.to_string()).collect::<Vec<String>>().join(" "))
     }
 
+    /// Parses a `String` into a `ParserResult`.
     pub fn parse(&mut self, input: String) -> ParserResult {
         self.input = input;
 
